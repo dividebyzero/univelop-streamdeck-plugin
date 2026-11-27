@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>Create Univelop record</title>
+		<link rel="stylesheet" href="pi.css" />
+	</head>
+	<body>
+		<div id="connection"></div>
+		<div class="section" id="main"></div>
+
+		<script src="pi.js"></script>
+		<script>
+			const { h, row } = PI;
+			let schemaFields = [];
+			let fieldsStatus = "";
+
+			async function loadFields(refresh) {
+				schemaFields = [];
+				fieldsStatus = "";
+				if (!PI.settings.listId) return;
+				fieldsStatus = "Loading fields…";
+				render();
+				const res = await PI.request("univelop.getFields", { listId: PI.settings.listId, refresh: !!refresh });
+				if (res.ok) {
+					schemaFields = res.fields;
+					fieldsStatus = "";
+				} else fieldsStatus = res.error;
+				render();
+			}
+
+			/** Picks sensible defaults for time tracking from the list's fields. */
+			function timeTrackingPreset() {
+				const f = schemaFields;
+				const re = (r) => (x) => r.test(`${x.label} ${x.key}`);
+				const isStart = re(/start|begin|from|von|beginn/i);
+				const isEnd = re(/end|stop|until|to\b|bis|ende/i);
+				const timeLike = (x) => ["time", "datetime"].includes(x.kind);
+				const tokenFor = (x) => (x.kind === "time" ? "{{time|round15}}" : "{{now|round15}}");
+
+				const start = f.find((x) => timeLike(x) && isStart(x)) || f.find((x) => x.kind === "datetime");
+				const end = f.find((x) => timeLike(x) && isEnd(x) && x !== start);
+				const date = f.find((x) => x.kind === "date" && !isStart(x) && !isEnd(x)) || f.find((x) => x.kind === "date" && x !== start);
+
+				const fields = [];
+				if (date) fields.push({ key: date.key, kind: date.kind, value: "{{today}}", label: date.label });
+				if (start) fields.push({ key: start.key, kind: start.kind, value: tokenFor(start), label: start.label });
+				const stopFields = end ? [{ key: end.key, kind: end.kind, value: tokenFor(end), label: end.label }] : [];
+
+				// keep everything else the user already configured (e.g. project, description)
+				const keep = (PI.settings.fields || []).filter((x) => !fields.some((y) => y.key === x.key));
+				PI.saveSettings({ mode: "timer", fields: [...fields, ...keep], stopFields });
+				render();
+				return !!(start && end);
+			}
+
+			function render() {
+				const s = PI.settings;
+				s.mode = s.mode || "create";
+				const main = document.getElementById("main");
+
+				const listPicker = PI.listPicker({
+					value: () => s.listId,
+					currentLabel: () => s.listLabel,
+					onChange: (l) => {
+						PI.saveSettings({ listId: l ? l.id : "", listTechName: l ? l.techName : "", listLabel: l ? l.label : "", fields: [], stopFields: [], running: null });
+						loadFields(false);
+					},
+				});
+
+				const mode = h(
+					"div",
+					{ class: "segmented" },
+					[
+						["create", "New record per press"],
+						["timer", "Start / stop (timer)"],
+					].map(([v, l]) => {
+						const r = h("input", { type: "radio", name: "mode", value: v, checked: s.mode === v });
+						r.onchange = () => {
+							PI.saveSettings({ mode: v });
+							render();
+						};
+						return h("label", {}, r, h("span", {}, l));
+					}),
+				);
+
+				const after = h(
+					"select",
+					{},
+					h("option", { value: "none" }, "Nothing (just confirm)"),
+					h("option", { value: "open-record" }, "Open the new record"),
+					h("option", { value: "open-list" }, "Open the list"),
+				);
+				after.value = s.afterCreate || "none";
+				after.onchange = () => PI.saveSettings({ afterCreate: after.value });
+
+				const content = [];
+				content.push(listPicker);
+				if (s.listId) {
+					content.push(row("Mode", mode));
+					content.push(
+						h(
+							"div",
+							{ class: "hint" },
+							s.mode === "timer"
+								? "1st press creates the record, the key shows a running timer, 2nd press writes the stop values into the same record."
+								: "Every press creates a new record with the values below.",
+						),
+					);
+
+					if (fieldsStatus) content.push(h("div", { class: "hint" }, fieldsStatus));
+
+					const presetBtn = h("button", { type: "button" }, "⏱ Time tracking");
+					const presetStatus = h("span", { class: "status" });
+					presetBtn.onclick = () => {
+						const ok = timeTrackingPreset();
+						PI.status(document.getElementById("preset-status"), ok ? "ok" : "warn", ok ? "Start/end fields detected – check the values." : "Could not detect start and end fields – please pick them manually.");
+					};
+					presetStatus.id = "preset-status";
+					const reloadBtn = h("button", { type: "button", title: "Reload fields from schema" }, "⟳");
+					reloadBtn.onclick = () => loadFields(true);
+					content.push(row("", [presetBtn, reloadBtn]));
+					content.push(h("div", { class: "hint" }, presetStatus));
+
+					content.push(h("h2", {}, s.mode === "timer" ? "On start (create)" : "Default values"));
+					const createEditor = PI.fieldEditor({
+						fields: schemaFields,
+						value: s.fields || [],
+						emptyText: "No default values – add fields below.",
+						onChange: (v) => PI.saveSettings({ fields: v }),
+					});
+					content.push(createEditor.el);
+
+					if (s.mode === "timer") {
+						content.push(h("h2", {}, "On stop (update)"));
+						const stopEditor = PI.fieldEditor({
+							fields: schemaFields,
+							value: s.stopFields || [],
+							emptyText: "Nothing is written on stop – add e.g. the end time.",
+							onChange: (v) => PI.saveSettings({ stopFields: v }),
+						});
+						content.push(stopEditor.el);
+						if (s.running && s.running.recordId) {
+							const reset = h("button", { type: "button" }, "Reset running timer");
+							reset.onclick = () => {
+								PI.send("sendToPlugin", { event: "univelop.resetTimer" });
+								PI.saveSettings({ running: null });
+								render();
+							};
+							content.push(row("Running", [h("span", { class: "status ok" }, h("span", { class: "dot" }), `since ${new Date(s.running.startedAt).toLocaleTimeString()}`), reset]));
+						}
+					}
+
+					content.push(h("h2", {}, "After creating"));
+					content.push(row("Then", after));
+
+					// Advanced
+					const extra = h("textarea", { placeholder: '{ "status_id": "open" }', spellcheck: "false" });
+					extra.value = s.extraJson || "";
+					extra.oninput = PI.debounce(() => validateAndSave(extra, "extraJson"));
+					const advanced = [h("div", { class: "hint full" }, "Raw JSON merged into the create request (overrides fields above). Placeholders work here too."), extra];
+					if (s.mode === "timer") {
+						const stopExtra = h("textarea", { placeholder: '{ "status_id": "done" }', spellcheck: "false" });
+						stopExtra.value = s.stopExtraJson || "";
+						stopExtra.oninput = PI.debounce(() => validateAndSave(stopExtra, "stopExtraJson"));
+						advanced.push(h("div", { class: "hint full" }, "Raw JSON merged into the stop update."), stopExtra);
+					}
+					content.push(h("details", { class: "section", style: "margin-top:10px" }, h("summary", {}, "Advanced: raw JSON"), ...advanced));
+
+					const preview = h("pre", { class: "preview hidden" });
+					const previewBtn = h("button", { type: "button" }, "Preview request");
+					previewBtn.onclick = async () => {
+						const res = await PI.request("univelop.previewPayload", { settings: PI.settings });
+						preview.classList.remove("hidden");
+						preview.textContent = res.ok
+							? `POST /records/${PI.settings.listTechName}\n${JSON.stringify(res.create, null, 2)}` + (res.stop ? `\n\nPATCH /records/${PI.settings.listTechName}/<id>\n${JSON.stringify(res.stop, null, 2)}` : "")
+							: res.error;
+					};
+					content.push(row("", previewBtn), preview);
+				}
+
+				main.replaceChildren(...content);
+			}
+
+			function validateAndSave(textarea, key) {
+				try {
+					if (textarea.value.trim()) {
+						const v = JSON.parse(textarea.value);
+						if (!v || typeof v !== "object" || Array.isArray(v)) throw new Error();
+					}
+					textarea.classList.remove("invalid");
+				} catch {
+					textarea.classList.add("invalid");
+				}
+				PI.saveSettings({ [key]: textarea.value });
+			}
+
+			PI.on("ready", () => {
+				render();
+				loadFields(false);
+			});
+			let lastRunning = null;
+			PI.on("settings", (s) => {
+				// keep the "running" indicator in sync when the plugin starts/stops the timer
+				const running = (s.running && s.running.recordId) || null;
+				if (running !== lastRunning) {
+					lastRunning = running;
+					render();
+				}
+			});
+		</script>
+	</body>
+</html>

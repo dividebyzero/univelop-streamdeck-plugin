@@ -1,0 +1,33 @@
+{
+  "name": "univelop-streamdeck-plugin",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Stream Deck plugin for Univelop: run workflows, open tiles, create records with default values.",
+  "license": "GPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "build": "rollup -c",
+    "watch": "rollup -c -w --watch.onEnd=\"streamdeck restart de.univelop.streamdeck\"",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.ts",
+    "pack": "npm run build && streamdeck pack de.univelop.streamdeck.sdPlugin --output dist",
+    "e2e": "node test/e2e/harness.mjs",
+    "icons": "node scripts/render-icons.mjs"
+  },
+  "devDependencies": {
+    "@elgato/cli": "^1.10.5",
+    "@rollup/plugin-commonjs": "^29.0.3",
+    "@rollup/plugin-node-resolve": "^16.0.3",
+    "@rollup/plugin-terser": "^1.0.2",
+    "@rollup/plugin-typescript": "^12.3.1",
+    "@tsconfig/node20": "^20.1.11",
+    "@types/node": "^26.6.11",
+    "rollup": "^4.68.8",
+    "tslib": "^2.9.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "@elgato/streamdeck": "^3.0.6"
+  }
+}
