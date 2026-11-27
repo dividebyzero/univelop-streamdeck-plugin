@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>Run Univelop workflow</title>
+		<link rel="stylesheet" href="pi.css" />
+	</head>
+	<body>
+		<div id="connection"></div>
+		<div class="section" id="main"></div>
+
+		<script src="pi.js"></script>
+		<script>
+			const { h, row } = PI;
+
+			function render() {
+				const s = PI.settings;
+				const main = document.getElementById("main");
+
+				const datalist = h(
+					"datalist",
+					{ id: "recent-workflows" },
+					(PI.globals.recentWorkflows || []).map((n) => h("option", { value: n })),
+				);
+				const name = h("input", { type: "text", list: "recent-workflows", value: s.workflow || "", placeholder: "technical name or ID", spellcheck: "false" });
+				const check = h("button", { type: "button" }, "Check");
+				const checkStatus = h("span", { class: "status" });
+				name.oninput = PI.debounce(() => PI.saveSettings({ workflow: name.value.trim() }));
+
+				check.onclick = async () => {
+					PI.saveSettings({ workflow: name.value.trim() });
+					if (!name.value.trim()) return PI.status(checkStatus, "warn", "Enter a workflow name.");
+					PI.status(checkStatus, "", "Checking…");
+					const res = await PI.request("univelop.checkWorkflow", { name: name.value.trim() });
+					if (!res.ok) return PI.status(checkStatus, "err", res.error);
+					if (res.exists) return PI.status(checkStatus, "ok", `Found · last run ${res.lastRun ? new Date(res.lastRun).toLocaleString() : "unknown"}`);
+					PI.status(checkStatus, "warn", res.message);
+				};
+
+				const trigger = h("input", { type: "text", value: s.triggerSpecId || "", placeholder: "optional, e.g. webhook", spellcheck: "false" });
+				trigger.oninput = PI.debounce(() => PI.saveSettings({ triggerSpecId: trigger.value.trim() }));
+
+				const payload = h("textarea", { placeholder: '{\n  "source": "streamdeck",\n  "pressedAt": "{{now}}"\n}', spellcheck: "false" });
+				payload.value = s.payload || "";
+				payload.oninput = PI.debounce(() => {
+					try {
+						if (payload.value.trim()) JSON.parse(payload.value);
+						payload.classList.remove("invalid");
+					} catch {
+						payload.classList.add("invalid");
+					}
+					PI.saveSettings({ payload: payload.value });
+				});
+
+				const wait = h("input", { type: "checkbox", checked: !!s.wait });
+				wait.onchange = () => PI.saveSettings({ wait: wait.checked });
+				const resultPath = h("input", { type: "text", value: s.resultPath || "", placeholder: "e.g. count or result.label", spellcheck: "false" });
+				resultPath.oninput = PI.debounce(() => PI.saveSettings({ resultPath: resultPath.value.trim() }));
+				const openLog = h("input", { type: "checkbox", checked: !!s.openLogOnError });
+				openLog.onchange = () => PI.saveSettings({ openLogOnError: openLog.checked });
+
+				main.replaceChildren(
+					datalist,
+					row("Workflow", [name, check]),
+					h("div", { class: "hint" }, checkStatus),
+					h("div", { class: "hint" }, "The workflow needs an API/webhook trigger. Use its technical name (or ID)."),
+					row("Trigger step", trigger),
+					h("h2", {}, "Payload (JSON)"),
+					payload,
+					h("div", { class: "hint full" }, "Available in the workflow as <trigger>.payload. Placeholders: {{now}}, {{today}}, {{date}}, {{time}}, {{datetime}}, {{timestamp}}, offsets like {{now+15m}}, rounding like {{time|round15}}."),
+					h("h2", {}, "Feedback"),
+					row("", h("label", { class: "checkbox" }, wait, "Wait for the workflow to finish")),
+					row("Show on key", resultPath),
+					h("div", { class: "hint" }, "Field of the workflow's return value shown as key title (implies waiting)."),
+					row("", h("label", { class: "checkbox" }, openLog, "Open workflow log on error")),
+				);
+			}
+
+			PI.on("ready", render);
+		</script>
+	</body>
+</html>

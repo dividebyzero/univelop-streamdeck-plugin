@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="en">
+	<head>
+		<meta charset="utf-8" />
+		<title>Open in Univelop</title>
+		<link rel="stylesheet" href="pi.css" />
+	</head>
+	<body>
+		<div id="connection"></div>
+		<div class="section" id="main"></div>
+
+		<script src="pi.js"></script>
+		<script>
+			const { h, row } = PI;
+			const VIEWS = [
+				["list", "List / tile"],
+				["kanban", "Kanban board"],
+				["record", "Single record"],
+				["home", "Workspace home"],
+				["flows", "Workflow log"],
+			];
+
+			function render() {
+				const s = PI.settings;
+				s.view = s.view || "list";
+				const main = document.getElementById("main");
+
+				const view = h("select", {}, VIEWS.map(([v, l]) => h("option", { value: v }, l)));
+				view.value = s.view;
+
+				const listPicker = PI.listPicker({
+					value: () => s.listId,
+					currentLabel: () => s.listLabel,
+					onChange: (l) => {
+						PI.saveSettings({ listId: l ? l.id : "", listLabel: l ? l.label : "", listTechName: l ? l.techName : "", recordId: "", recordLabel: "" });
+						render();
+					},
+				});
+
+				const tile = h("input", { type: "text", value: s.tileSpecId || "", placeholder: "optional", spellcheck: "false" });
+				tile.oninput = PI.debounce(() => {
+					PI.saveSettings({ tileSpecId: tile.value.trim() });
+					updatePreview();
+				});
+
+				const recordBox = h("div");
+				if (s.listId && (s.view === "record" || s.view === "list")) {
+					recordBox.appendChild(
+						row(
+							s.view === "record" ? "Record" : "Select record",
+							PI.recordPicker({
+								spec: s.listTechName || s.listId,
+								value: s.recordId || "",
+								labels: [s.recordLabel],
+								onChange: (id, labels) => {
+									PI.saveSettings({ recordId: id, recordLabel: labels[0] || "" });
+									updatePreview();
+								},
+							}),
+						),
+					);
+				}
+
+				const preview = h("pre", { class: "preview" });
+				const openBtn = h("button", { type: "button" }, "Open now");
+
+				function url() {
+					const base = (PI.globals.appBaseUrl || "https://app.univelop.de").replace(/\/+$/, "");
+					const ws = `${base}/#/ws/${PI.globals.workspaceId || "<workspace>"}`;
+					const v = PI.settings.view;
+					const id = PI.settings.listId;
+					if (v === "home" || (!id && v !== "flows")) return ws;
+					if (v === "flows") return `${ws}/flows/history`;
+					if (v === "kanban") return `${ws}/kanban/${id}`;
+					if (v === "record") return PI.settings.recordId ? `${ws}/records/${id}/${PI.settings.recordId}` : `${ws}/records-list/${id}`;
+					const q = [];
+					if (PI.settings.tileSpecId) q.push(`tileSpecId=${encodeURIComponent(PI.settings.tileSpecId)}`);
+					if (PI.settings.recordId) q.push(`selectedRecordId=${encodeURIComponent(PI.settings.recordId)}`);
+					return `${ws}/records-list/${id}${q.length ? "?" + q.join("&") : ""}`;
+				}
+				function updatePreview() {
+					preview.textContent = url();
+				}
+				openBtn.onclick = () => PI.openUrl(url());
+
+				view.onchange = () => {
+					PI.saveSettings({ view: view.value });
+					render();
+				};
+
+				const needsList = ["list", "kanban", "record"].includes(s.view);
+				main.replaceChildren(
+					row("Open", view),
+					needsList ? listPicker : null,
+					s.view === "list" ? row("Tile ID", tile) : null,
+					s.view === "list" ? h("div", { class: "hint" }, "Optional tileSpecId to apply the tile's filter and sorting.") : null,
+					recordBox,
+					h("h2", {}, "Link"),
+					preview,
+					row("", openBtn),
+				);
+				updatePreview();
+			}
+
+			PI.on("ready", render);
+		</script>
+	</body>
+</html>

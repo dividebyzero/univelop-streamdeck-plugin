@@ -1,0 +1,86 @@
+{
+	"$schema": "https://schemas.elgato.com/streamdeck/plugins/manifest.json",
+	"Name": "Univelop",
+	"Version": "0.1.0.0",
+	"Author": "Univelop GmbH",
+	"Description": "Trigger Univelop workflows, open lists and records, and create records with preset values – e.g. one-press time tracking.",
+	"URL": "https://univelop.de",
+	"UUID": "de.univelop.streamdeck",
+	"Category": "Univelop",
+	"CategoryIcon": "imgs/plugin/category-icon",
+	"Icon": "imgs/plugin/marketplace",
+	"CodePath": "bin/plugin.js",
+	"SDKVersion": 3,
+	"Software": {
+		"MinimumVersion": "7.1"
+	},
+	"OS": [
+		{
+			"Platform": "mac",
+			"MinimumVersion": "12"
+		},
+		{
+			"Platform": "windows",
+			"MinimumVersion": "10"
+		}
+	],
+	"Nodejs": {
+		"Version": "24",
+		"Debug": "enabled"
+	},
+	"Actions": [
+		{
+			"Name": "Open in Univelop",
+			"UUID": "de.univelop.streamdeck.open-tile",
+			"Icon": "imgs/actions/open-tile/icon",
+			"Tooltip": "Opens a list, tile, Kanban board or record of your workspace in the browser.",
+			"PropertyInspectorPath": "ui/open-tile.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/open-tile/key",
+					"TitleAlignment": "bottom"
+				}
+			]
+		},
+		{
+			"Name": "Run workflow",
+			"UUID": "de.univelop.streamdeck.run-workflow",
+			"Icon": "imgs/actions/run-workflow/icon",
+			"Tooltip": "Triggers a Univelop workflow, optionally waits for it and shows its result.",
+			"PropertyInspectorPath": "ui/run-workflow.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"States": [
+				{
+					"Image": "imgs/actions/run-workflow/key",
+					"TitleAlignment": "bottom"
+				}
+			]
+		},
+		{
+			"Name": "Create record / timer",
+			"UUID": "de.univelop.streamdeck.create-record",
+			"Icon": "imgs/actions/create-record/icon",
+			"Tooltip": "Creates a record with preset values. Timer mode: press to start, press again to stop (time tracking).",
+			"PropertyInspectorPath": "ui/create-record.html",
+			"Controllers": [
+				"Keypad"
+			],
+			"DisableAutomaticStates": true,
+			"States": [
+				{
+					"Image": "imgs/actions/create-record/key",
+					"TitleAlignment": "bottom"
+				},
+				{
+					"Image": "imgs/actions/create-record/key-running",
+					"TitleAlignment": "bottom"
+				}
+			]
+		}
+	]
+}
