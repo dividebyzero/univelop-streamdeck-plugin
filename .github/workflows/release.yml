@@ -1,0 +1,81 @@
+name: Release
+
+# Publish a release in either of two ways:
+#   - push a tag:      git tag v0.2.0 && git push origin v0.2.0
+#   - run manually:    Actions → Release → Run workflow → version "0.2.0"
+#                      (creates the tag v0.2.0 on the selected commit)
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version without leading v, e.g. 0.2.0 (Stream Deck allows 3 or 4 numeric parts)"
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = "workflow_dispatch" ]; then
+            RAW="$INPUT_VERSION"
+          else
+            RAW="$GITHUB_REF_NAME"
+          fi
+          VERSION="${RAW#v}"
+          # Stream Deck plugin versions must be numeric: major.minor.patch[.build]
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "::error::Invalid version '$RAW'. Use v1.2.3 or v1.2.3.4."
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      - name: Pack plugin
+        run: |
+          npx streamdeck pack de.univelop.streamdeck.sdPlugin \
+            --version "${{ steps.version.outputs.version }}" \
+            --output dist --force --no-update-check --no-file-list
+          mv dist/de.univelop.streamdeck.streamDeckPlugin \
+            "dist/de.univelop.streamdeck-${{ steps.version.outputs.tag }}.streamDeckPlugin"
+          ls -la dist
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG exists – replacing its asset."
+            gh release upload "$TAG" dist/*.streamDeckPlugin --clobber
+          else
+            gh release create "$TAG" dist/*.streamDeckPlugin \
+              --target "$GITHUB_SHA" \
+              --title "Univelop for Stream Deck $TAG" \
+              --generate-notes
+          fi
