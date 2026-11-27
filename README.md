@@ -83,6 +83,18 @@ npm run e2e          # fake Stream Deck + mock API + real settings UIs in Chromi
 npm run pack         # → dist/de.univelop.streamdeck.streamDeckPlugin
 ```
 
+### Releases
+
+GitHub Actions builds, tests and packs the plugin, then attaches `de.univelop.streamdeck-vX.Y.Z.streamDeckPlugin` to a GitHub release. There are two ways to start it:
+
+```bash
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+You can also go to **Actions → Release → Run workflow** and enter `0.2.0`. This creates the tag on the selected branch's commit.
+
+The version is written into the packaged manifest as `0.2.0.0`. Stream Deck only accepts numeric versions, so `v1.2.3` and `v1.2.3.4` are valid but `v1.0.0-beta` is not. Every other push and pull request runs CI: typecheck, tests, build and manifest validation.
+
 For live development, link the plugin into Stream Deck (`npx streamdeck link de.univelop.streamdeck.sdPlugin`) and run `npm run watch`.
 
 ```
